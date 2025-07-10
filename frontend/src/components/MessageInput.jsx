@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
+  const [isSending, setIsSending] = useState(false); // Add loading state
   const fileInputRef = useRef(null);
   const { sendMessage } = useChatStore();
 
@@ -31,24 +32,25 @@ const MessageInput = () => {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!text.trim() && !imagePreview) return;
-
+    if (isSending) return; // Prevent duplicate sends
+    setIsSending(true);
     try {
       await sendMessage({
         text: text.trim(),
         image: imagePreview,
       });
-
-      // Clear form
       setText("");
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
       console.error("Failed to send message:", error);
+    } finally {
+      setIsSending(false);
     }
   };
 
   return (
-    <div className="p-4 w-full">
+    <div className="p-4 w-full bg-base-200/80 rounded-b-2xl shadow-inner flex flex-col">
       {imagePreview && (
         <div className="mb-3 flex items-center gap-2">
           <div className="relative">
@@ -59,8 +61,7 @@ const MessageInput = () => {
             />
             <button
               onClick={removeImage}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300
-              flex items-center justify-center"
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300 flex items-center justify-center shadow hover:bg-red-400 transition-colors"
               type="button"
             >
               <X className="size-3" />
@@ -73,7 +74,7 @@ const MessageInput = () => {
         <div className="flex-1 flex gap-2">
           <input
             type="text"
-            className="w-full input input-bordered rounded-lg input-sm sm:input-md"
+            className="w-full input input-bordered rounded-xl input-md bg-base-100 focus:ring-2 focus:ring-green-400 transition-all shadow-sm"
             placeholder="Type a message..."
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -88,19 +89,18 @@ const MessageInput = () => {
 
           <button
             type="button"
-            className={`flex btn btn-circle
-           ${imagePreview ? "text-emerald-500" : "text-zinc-400"}`}
+            className={`flex btn btn-circle bg-green-500 hover:bg-green-600 text-white border-none shadow-lg transition-transform active:scale-95`}
             onClick={() => fileInputRef.current?.click()}
           >
-            <Image size={20} />
+            <Image size={24} />
           </button>
         </div>
         <button
           type="submit"
-          className="btn btn-sm btn-circle"
-          disabled={!text.trim() && !imagePreview}
+          className="btn btn-md btn-circle bg-green-500 hover:bg-green-600 text-white border-none shadow-lg transition-transform active:scale-95"
+          disabled={isSending || (!text.trim() && !imagePreview)}
         >
-          <Send size={22} />
+          <Send size={24} />
         </button>
       </form>
     </div>

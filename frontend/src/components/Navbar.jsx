@@ -7,17 +7,16 @@ const Navbar = () => {
 
   return (
     <header
-      className="bg-base-100 border-b border-base-300 fixed w-full top-0 z-40 
-    backdrop-blur-lg bg-base-100/80"
+      className="bg-gradient-to-r from-green-400 via-blue-500 to-purple-500 border-b border-base-300 fixed w-full top-0 z-40 backdrop-blur-lg bg-base-100/80 shadow-xl"
     >
       <div className="container mx-auto px-4 h-16">
         <div className="flex items-center justify-between h-full">
           <div className="flex items-center gap-8">
             <Link to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-all">
-              <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center shadow-md">
                 <MessageSquare className="w-5 h-5 text-primary" />
               </div>
-              <h1 className="text-lg font-bold">Chatty</h1>
+              <h1 className="text-lg font-bold text-white drop-shadow">Chatty</h1>
             </Link>
           </div>
 
@@ -25,8 +24,7 @@ const Navbar = () => {
             <Link
               to={"/settings"}
               className={`
-              btn btn-sm gap-2 transition-colors
-              
+              btn btn-sm gap-2 transition-colors bg-white/20 hover:bg-white/40 text-white border-none shadow-md
               `}
             >
               <Settings className="w-4 h-4" />
@@ -35,12 +33,12 @@ const Navbar = () => {
 
             {authUser && (
               <>
-                <Link to={"/profile"} className={`btn btn-sm gap-2`}>
+                <Link to={"/profile"} className={`btn btn-sm gap-2 bg-white/20 hover:bg-white/40 text-white border-none shadow-md`}>
                   <User className="size-5" />
                   <span className="hidden sm:inline">Profile</span>
                 </Link>
 
-                <button className="flex gap-2 items-center" onClick={logout}>
+                <button className="flex gap-2 items-center text-white hover:opacity-80 transition-all" onClick={logout}>
                   <LogOut className="size-5" />
                   <span className="hidden sm:inline">Logout</span>
                 </button>

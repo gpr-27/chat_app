@@ -21,7 +21,7 @@ const Sidebar = () => {
   if (isUsersLoading) return <SidebarSkeleton />;
 
   return (
-    <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200">
+    <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200 bg-base-100/80 backdrop-blur-md shadow-xl">
       <div className="border-b border-base-300 w-full p-5">
         <div className="flex items-center gap-2">
           <Users className="size-6" />
@@ -42,27 +42,26 @@ const Sidebar = () => {
         </div>
       </div>
 
-      <div className="overflow-y-auto w-full py-3">
+      <div className="overflow-y-auto w-full py-3 flex-1">
         {filteredUsers.map((user) => (
           <button
             key={user._id}
             onClick={() => setSelectedUser(user)}
             className={`
               w-full p-3 flex items-center gap-3
-              hover:bg-base-300 transition-colors
-              ${selectedUser?._id === user._id ? "bg-base-300 ring-1 ring-base-300" : ""}
+              hover:bg-base-300/70 transition-colors rounded-xl
+              ${selectedUser?._id === user._id ? "bg-green-100 shadow-md ring-2 ring-green-300" : ""}
             `}
           >
             <div className="relative mx-auto lg:mx-0">
               <img
                 src={user.profilePic || "/avatar.png"}
                 alt={user.name}
-                className="size-12 object-cover rounded-full"
+                className="size-14 object-cover rounded-full shadow-md border-2 border-base-300"
               />
               {onlineUsers.includes(user._id) && (
                 <span
-                  className="absolute bottom-0 right-0 size-3 bg-green-500 
-                  rounded-full ring-2 ring-zinc-900"
+                  className="absolute bottom-1 right-1 size-4 bg-green-500 rounded-full ring-2 ring-zinc-900 border-2 border-white shadow"
                 />
               )}
             </div>
