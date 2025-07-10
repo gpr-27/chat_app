@@ -21,7 +21,7 @@ const Sidebar = () => {
   if (isUsersLoading) return <SidebarSkeleton />;
 
   return (
-    <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200 bg-base-100/80 backdrop-blur-md shadow-xl">
+    <aside className="h-full w-72 border-r border-base-300 flex flex-col transition-all duration-200 bg-base-100/80 backdrop-blur-md shadow-xl overflow-y-auto">
       <div className="border-b border-base-300 w-full p-5">
         <div className="flex items-center gap-2">
           <Users className="size-6" />
@@ -53,7 +53,7 @@ const Sidebar = () => {
               ${selectedUser?._id === user._id ? "bg-green-100 shadow-md ring-2 ring-green-300" : ""}
             `}
           >
-            <div className="relative mx-auto lg:mx-0">
+            <div className="relative">
               <img
                 src={user.profilePic || "/avatar.png"}
                 alt={user.name}
@@ -65,9 +65,7 @@ const Sidebar = () => {
                 />
               )}
             </div>
-
-            {/* User info - only visible on larger screens */}
-            <div className="hidden lg:block text-left min-w-0">
+            <div className="text-left min-w-0 flex-1">
               <div className="font-medium truncate">{user.fullName}</div>
               <div className="text-sm text-zinc-400">
                 {onlineUsers.includes(user._id) ? "Online" : "Offline"}
