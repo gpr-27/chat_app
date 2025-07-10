@@ -5,7 +5,7 @@ import SidebarSkeleton from "./skeletons/SidebarSkeleton";
 import { Users } from "lucide-react";
 
 const Sidebar = () => {
-  const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading } = useChatStore();
+  const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading, unreadCounts } = useChatStore();
 
   const { onlineUsers } = useAuthStore();
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
@@ -63,6 +63,11 @@ const Sidebar = () => {
                 <span
                   className="absolute bottom-1 right-1 size-4 bg-green-500 rounded-full ring-2 ring-zinc-900 border-2 border-white shadow"
                 />
+              )}
+              {unreadCounts[user._id] > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] flex items-center justify-center shadow">
+                  {unreadCounts[user._id]}
+                </span>
               )}
             </div>
             <div className="text-left min-w-0 flex-1">

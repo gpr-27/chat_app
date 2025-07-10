@@ -9,6 +9,7 @@ export const useChatStore = create((set, get) => ({
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
+  unreadCounts: {}, // userId: count
 
   getUsers: async () => {
     set({ isUsersLoading: true });
@@ -27,6 +28,10 @@ export const useChatStore = create((set, get) => ({
     try {
       const res = await axiosInstance.get(`/messages/${userId}`);
       set({ messages: res.data });
+      // Reset unread count for this user
+      set((state) => ({
+        unreadCounts: { ...state.unreadCounts, [userId]: 0 },
+      }));
     } catch (error) {
       toast.error(error.response.data.message);
     } finally {
@@ -51,11 +56,23 @@ export const useChatStore = create((set, get) => ({
 
     socket.on("newMessage", (newMessage) => {
       const isMessageSentFromSelectedUser = newMessage.senderId === selectedUser._id;
-      if (!isMessageSentFromSelectedUser) return;
-
-      set({
-        messages: [...get().messages, newMessage],
-      });
+      if (isMessageSentFromSelectedUser) {
+        set({
+          messages: [...get().messages, newMessage],
+        });
+        // Reset unread count for this user
+        set((state) => ({
+          unreadCounts: { ...state.unreadCounts, [selectedUser._id]: 0 },
+        }));
+      } else {
+        // Increment unread count for sender
+        set((state) => ({
+          unreadCounts: {
+            ...state.unreadCounts,
+            [newMessage.senderId]: (state.unreadCounts[newMessage.senderId] || 0) + 1,
+          },
+        }));
+      }
     });
   },
 
@@ -64,5 +81,13 @@ export const useChatStore = create((set, get) => ({
     socket.off("newMessage");
   },
 
-  setSelectedUser: (selectedUser) => set({ selectedUser }),
+  setSelectedUser: (selectedUser) => {
+    set({ selectedUser });
+    // Reset unread count for this user
+    if (selectedUser?._id) {
+      set((state) => ({
+        unreadCounts: { ...state.unreadCounts, [selectedUser._id]: 0 },
+      }));
+    }
+  },
 }));
