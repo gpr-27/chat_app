@@ -1,46 +1,73 @@
+// Config is imported first: it loads + validates the environment and will exit
+// the process immediately if anything required is missing or invalid.
+import config from "./config/index.js";
+import logger from "./lib/logger.js";
+
 import express from "express";
-import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import path from "path";
 
 import { connectDB } from "./lib/db.js";
+import { corsOrigin } from "./lib/cors.js";
+import { notFound, errorHandler } from "./middleware/errorHandler.js";
 
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import { app, server } from "./lib/socket.js";
 
-dotenv.config();
-
-const PORT = process.env.PORT;
-const __dirname = path.resolve();
-
-
-// Increase payload size limit for image uploads
+// Increase payload size limit for base64 image uploads.
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-// CORS middleware before routes
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: corsOrigin,
     credentials: true,
   })
 );
 
 app.use(cookieParser());
+
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "frontend", "dist")));
+if (config.isProduction) {
+  app.use(express.static(config.paths.clientDist));
 
   app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
+    res.sendFile(path.join(config.paths.clientDist, "index.html"));
   });
 }
 
-server.listen(PORT, () => {
-  console.log("server is running on PORT:" + PORT);
-  connectDB();
-});
+// 404 + centralized error logging (registered after all routes).
+app.use(notFound);
+app.use(errorHandler);
+
+const printStartupBanner = (dbHost) => {
+  [
+    "=================================",
+    ` NODE_ENV     ${config.env}`,
+    ` PORT         ${config.port}`,
+    ` CLIENT_URL   ${config.clientUrls.join(", ")}`,
+    ` MongoDB      Connected ✓ (${dbHost})`,
+    ` Clerk auth   Configured ✓`,
+    "=================================",
+  ].forEach((line) => logger.info(line));
+};
+
+const start = async () => {
+  logger.info(`Environment loaded — starting in "${config.env}" mode`);
+  try {
+    const dbHost = await connectDB();
+    server.listen(config.port, () => {
+      logger.info(`Server listening on port ${config.port}`);
+      printStartupBanner(dbHost);
+    });
+  } catch (error) {
+    logger.error("Fatal: server failed to start —", error.message);
+    process.exit(1);
+  }
+};
+
+start();
