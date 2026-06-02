@@ -35,13 +35,41 @@ const toList = (value) => [
   ),
 ];
 
-// Build the WebRTC ICE server list from configuration. STUN URLs are required
-// (NAT traversal needs at least one); TURN is optional and only added when its
-// credentials are configured.
+// Free public STUN servers (Google) — used when VITE_STUN_URLS is not set.
+// STUN only helps two peers discover their public address; it does NOT relay
+// media.
+const DEFAULT_STUN_URLS = [
+  "stun:stun.l.google.com:19302",
+  "stun:stun1.l.google.com:19302",
+];
+
+// Free public TURN relay (Metered "Open Relay"). A TURN server relays the actual
+// audio/video when a direct peer-to-peer path can't be established — which is the
+// COMMON case between two phones on mobile data, or behind strict/symmetric NATs
+// and corporate firewalls. Without TURN, a call can appear "connected" while no
+// media ever flows (the classic "I called but the other phone has no sound").
+//
+// These no-signup credentials are a best-effort fallback so calls work out of
+// the box at zero cost. For production-grade reliability, set your own TURN
+// server via VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL (e.g. a
+// free Metered API key, Twilio, or a self-hosted coturn) — it takes precedence.
+const DEFAULT_TURN_SERVERS = [
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+];
+
+// Build the WebRTC ICE server list. STUN (with a sensible default) is always
+// included; a TURN relay is always included too — either the one configured via
+// env, or the free public fallback — so NAT traversal works without per-deploy
+// setup.
 const buildIceServers = (stunUrls, turnUrl, turnUser, turnCredential) => {
-  const servers = toList(stunUrls).map((urls) => ({ urls }));
+  const stun = toList(stunUrls);
+  const servers = (stun.length ? stun : DEFAULT_STUN_URLS).map((urls) => ({ urls }));
   if (turnUrl) {
     servers.push({ urls: turnUrl, username: turnUser, credential: turnCredential });
+  } else {
+    servers.push(...DEFAULT_TURN_SERVERS);
   }
   return servers;
 };
@@ -54,11 +82,9 @@ const SOCKET_URL = required("VITE_SOCKET_URL");
 
 const CLERK_PUBLISHABLE_KEY = required("VITE_CLERK_PUBLISHABLE_KEY");
 
-const STUN_URLS = required("VITE_STUN_URLS");
-const STUN_LIST = toList(STUN_URLS);
-if (STUN_URLS && STUN_LIST.length === 0) {
-  errors.push("VITE_STUN_URLS must contain at least one STUN URL");
-}
+// STUN/TURN are optional: buildIceServers() falls back to free public servers
+// when these are unset, so calls work without any per-deployment configuration.
+const STUN_URLS = optional("VITE_STUN_URLS");
 const TURN_URL = optional("VITE_TURN_URL");
 const TURN_USERNAME = optional("VITE_TURN_USERNAME");
 const TURN_CREDENTIAL = optional("VITE_TURN_CREDENTIAL");

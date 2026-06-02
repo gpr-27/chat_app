@@ -63,12 +63,26 @@ const CallOverlay = () => {
 
   // Remote audio plays through a dedicated, always-mounted <audio> sink so it
   // works for both audio and video calls and can be routed to a chosen speaker.
+  // Mobile browsers often block autoplay of a media element, which is a common
+  // reason "the other phone has no sound" — so if play() is rejected we retry
+  // once on the next user interaction (which is always allowed).
   useEffect(() => {
     const el = remoteAudioRef.current;
-    if (el && remoteStream) {
-      el.srcObject = remoteStream;
-      el.play?.().catch(() => {});
-    }
+    if (!el || !remoteStream) return;
+
+    el.srcObject = remoteStream;
+
+    const tryPlay = () => el.play?.().catch(() => {});
+    tryPlay();
+
+    const resumeOnGesture = () => tryPlay();
+    document.addEventListener("click", resumeOnGesture, { once: true });
+    document.addEventListener("touchend", resumeOnGesture, { once: true });
+
+    return () => {
+      document.removeEventListener("click", resumeOnGesture);
+      document.removeEventListener("touchend", resumeOnGesture);
+    };
   }, [remoteStream]);
 
   // Route remote audio to the selected speaker.

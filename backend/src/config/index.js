@@ -76,7 +76,12 @@ const NODE_ENV = oneOf("NODE_ENV", required("NODE_ENV"), [
   "test",
 ]);
 const PORT = positiveInt("PORT", required("PORT"));
-const CLIENT_URL = required("CLIENT_URL");
+// CLIENT_URL drives CORS / Socket.IO allowed origins. On Render the service's
+// public URL is injected automatically as RENDER_EXTERNAL_URL, so fall back to
+// it when CLIENT_URL is unset — a single-service deploy then works without the
+// chicken-and-egg of needing the URL before the first deploy exists.
+const CLIENT_URL = optionalVar("CLIENT_URL") || optionalVar("RENDER_EXTERNAL_URL");
+if (!CLIENT_URL) errors.push("Missing CLIENT_URL (or RENDER_EXTERNAL_URL)");
 const MONGODB_URI = required("MONGODB_URI");
 const JWT_SECRET = required("JWT_SECRET");
 

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-build:
+    name: Lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Syntax-check backend
+        run: find backend/src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Lint frontend
+        run: npm run lint --prefix frontend
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+        env:
+          VITE_APP_ENV: production
+          VITE_API_URL: /api
+          VITE_SOCKET_URL: /
+          # Build-only placeholder (publishable keys are public, not secret).
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_Y2ktYnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA

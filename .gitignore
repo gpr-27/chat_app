@@ -26,4 +26,7 @@ dist-ssr
 # Claude Code agent tooling (local, not part of the app)
 .claude/
 
+# Environment — never commit real secrets; the template is tracked.
 .env
+.env.*
+!.env.example

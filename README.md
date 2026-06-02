@@ -23,6 +23,7 @@ audio/video calls (WebRTC), online presence, and a polished **light + dark**
 - [API reference](#api-reference)
 - [Socket.IO events](#socketio-events)
 - [Production build](#production-build)
+- [Deployment (Render)](#deployment-render)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -368,8 +369,12 @@ The client connects with `?userId=<id>` in the handshake query. Key events:
 - Calls: `call:offer`, `call:answer`, `call:ice`, `call:reject`, `call:end`, `call:busy`
 
 > Calls are **peer-to-peer** WebRTC; the server only relays SDP/ICE between the
-> two parties. STUN servers are configured in `useCallStore.js`. For strict or
-> corporate networks you may also need a TURN relay (add its credentials there).
+> two parties. ICE servers are configured by env (`VITE_STUN_URLS`,
+> `VITE_TURN_*`). Left unset, the app falls back to free public STUN **and a free
+> public TURN relay**, so calls work across mobile data and strict NATs out of
+> the box. A TURN relay is what carries the audio/video when a direct path can't
+> be formed — without one, calls connect but no media flows. For production set
+> your own TURN server (it takes precedence over the free fallback).
 
 ---
 
@@ -387,6 +392,32 @@ The client connects with `?userId=<id>` in the handshake query. Key events:
 In production the Express server serves the built frontend from
 `frontend/dist` and routes all non-API paths to the SPA's `index.html` (see
 `backend/src/index.js`), so a single process serves both the API and the app.
+
+It also enables production hardening: a `GET /api/health` probe, security
+headers (helmet), gzip compression, per-IP rate limiting, `trust proxy` for
+running behind a reverse proxy, and graceful shutdown on `SIGTERM`/`SIGINT`.
+
+---
+
+## Deployment (Render)
+
+The whole app deploys as **one Render web service**: the Express/Socket.IO
+backend serves the built SPA from `frontend/dist`, so the UI, REST API, and
+realtime/WebRTC-signaling layer all share a single origin (and HTTPS, which
+calls require for camera/mic access).
+
+The repo ships a [`render.yaml`](./render.yaml) Blueprint, so deploying is:
+
+1. Push this repo to GitHub.
+2. **Render Dashboard → New → Blueprint**, pick the repo.
+3. Fill in the secret env vars (MongoDB URI, Clerk keys, Cloudinary), then **Apply**.
+
+Render runs `npm run build` (installs deps + builds the SPA) then `npm start`
+(`node backend/src/index.js`), health-checks `GET /api/health`, and injects
+`PORT` + `RENDER_EXTERNAL_URL` automatically — so you don't set those yourself.
+
+**See [DEPLOYMENT.md](./DEPLOYMENT.md)** for the full guide: every env var, using
+MongoDB Atlas, custom domains, TURN-for-calls, and scaling/Socket.IO notes.
 
 ---
 
@@ -433,11 +464,14 @@ CLIENT_URL=http://localhost:5190 npm run dev
 **Avatar / image upload fails**
 Check that all three `CLOUDINARY_*` values in `.env` are correct.
 
-**Calls don't connect**
-WebRTC needs to traverse NAT. The default STUN servers work on most home
-networks; on strict/corporate networks add a TURN server in
-`frontend/src/store/useCallStore.js`. Browsers also require **HTTPS** (or
-`localhost`) to grant camera/microphone access.
+**Calls connect but there's no audio/video (esp. between two phones)**
+This is NAT traversal failing. STUN alone can't relay media between strict or
+mobile (symmetric-NAT) networks — you need a **TURN** relay. The app already
+falls back to a free public TURN server, but those are best-effort; for reliable
+calls set your own via `VITE_TURN_URL` / `VITE_TURN_USERNAME` /
+`VITE_TURN_CREDENTIAL` (a free [Metered](https://www.metered.ca/tools/openrelay)
+API key or self-hosted coturn). Browsers also require **HTTPS** (or `localhost`)
+to grant camera/microphone access — Render serves HTTPS by default.
 
 **Logged out unexpectedly / `401 Unauthorized`**
 The JWT cookie expires after 7 days, or `NODE_ENV=production` without HTTPS will

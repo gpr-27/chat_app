@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Render Blueprint — deploys the WHOLE app as ONE web service.
+#
+#  The Express/Socket.IO backend serves the built React SPA from frontend/dist
+#  (see backend/src/index.js, NODE_ENV=production branch), so the API, the
+#  realtime/WebRTC-signaling layer, and the UI all live on a single origin.
+#
+#  First deploy:
+#    1. Push this repo to GitHub.
+#    2. Render Dashboard → New → Blueprint → pick this repo.
+#    3. Fill in the env vars marked `sync: false` (secrets), then Apply.
+#
+#  Render injects PORT and RENDER_EXTERNAL_URL automatically — the app already
+#  reads both, so CORS/Socket.IO origins are configured with no extra steps.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  - type: web
+    name: chat-app
+    runtime: node
+    plan: free          # bump to "starter" to avoid free-tier cold-starts
+    region: oregon      # pick the region closest to your users
+    branch: main
+    autoDeploy: true
+    # `npm run build` installs root + backend + frontend deps, then builds the
+    # SPA into frontend/dist. Vite reads the VITE_* vars below from the build env.
+    buildCommand: npm run build
+    # `npm start` runs `node backend/src/index.js`, which serves the SPA + API.
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: LOG_LEVEL
+        value: info
+      - key: GUEST_RETENTION_DAYS
+        value: "30"
+
+      # ── Frontend build-time config (same-origin) ──────────────────────────
+      - key: VITE_APP_ENV
+        value: production
+      - key: VITE_API_URL
+        value: /api
+      - key: VITE_SOCKET_URL
+        value: /
+
+      # ── Secrets / deployment-specific — set these in the Render dashboard ──
+      - key: JWT_SECRET
+        generateValue: true            # Render generates a strong random value
+      - key: MONGODB_URI
+        sync: false                    # e.g. a MongoDB Atlas connection string
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: VITE_CLERK_PUBLISHABLE_KEY # same pk_... value (baked into the SPA)
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ── Optional — add in the dashboard to override the free public TURN ──
+      # relay with your own (recommended for production call reliability):
+      #   VITE_TURN_URL, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL, VITE_STUN_URLS

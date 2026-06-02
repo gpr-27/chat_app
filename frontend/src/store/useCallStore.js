@@ -52,7 +52,9 @@ export const useCallStore = create((set, get) => ({
   // ── internal helpers ────────────────────────────────────────────────────
   _createPeer: (remoteUserId) => {
     const socket = getSocket();
-    const peer = new RTCPeerConnection(ICE_CONFIG);
+    // iceCandidatePoolSize pre-gathers candidates so the connection forms a bit
+    // faster once signaling completes.
+    const peer = new RTCPeerConnection({ ...ICE_CONFIG, iceCandidatePoolSize: 10 });
 
     peer.onicecandidate = (event) => {
       if (event.candidate) {
@@ -64,9 +66,24 @@ export const useCallStore = create((set, get) => ({
       set({ remoteStream: event.streams[0] });
     };
 
+    // Only tear down on TERMINAL states. "disconnected" is frequently transient
+    // (a brief network blip on mobile) and recovers on its own — tearing the
+    // call down there would drop perfectly recoverable calls.
     peer.onconnectionstatechange = () => {
-      if (["failed", "closed", "disconnected"].includes(peer.connectionState)) {
+      if (["failed", "closed"].includes(peer.connectionState)) {
         if (get().callStatus !== "idle") get()._cleanup();
+      }
+    };
+
+    // If ICE fails outright, ask the browser to restart it (re-gather candidates,
+    // including relayed TURN paths) before giving up.
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === "failed") {
+        try {
+          peer.restartIce?.();
+        } catch {
+          // best effort
+        }
       }
     };
 
