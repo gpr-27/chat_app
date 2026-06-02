@@ -1,15 +1,24 @@
 import express from "express";
-import { checkAuth, login, logout, signup, updateProfile } from "../controllers/auth.controller.js";
+import {
+  checkAuth,
+  createGuest,
+  migrateGuest,
+  syncProfile,
+  updateProfile,
+} from "../controllers/auth.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.post("/signup", signup);
-router.post("/login", login);
-router.post("/logout", logout);
+// Anonymous guest account creation — no session required.
+router.post("/guest", createGuest);
 
+// Account (Clerk) + guest sessions both pass protectRoute.
+router.get("/check", protectRoute, checkAuth);
+router.post("/sync", protectRoute, syncProfile);
 router.put("/update-profile", protectRoute, updateProfile);
 
-router.get("/check", protectRoute, checkAuth);
+// Migrate guest data into the signed-in Clerk account.
+router.post("/migrate-guest", protectRoute, migrateGuest);
 
 export default router;

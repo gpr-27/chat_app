@@ -1,156 +1,76 @@
-import { generateToken } from "../lib/utils.js";
+import { randomUUID } from "crypto";
 import User from "../models/user.model.js";
-// import bcrypt from "bcryptjs";
+import Message from "../models/message.model.js";
 import cloudinary from "../lib/cloudinary.js";
+import logger from "../lib/logger.js";
+import { signGuestToken, verifyGuestToken } from "../lib/guestToken.js";
 
-// export const signup = async (req, res) => {
-//   const { fullName, email, password } = req.body;
-//   try {
-//     if (!fullName || !email || !password) {
-//       return res.status(400).json({ message: "All fields are required" });
-//     }
+// Full accounts are owned by Clerk on the client; anonymous guests get a
+// backend-issued session. The backend exposes the app-specific profile (avatar),
+// the current user, guest creation, and guest→account migration.
 
-//     if (password.length < 6) {
-//       return res.status(400).json({ message: "Password must be at least 6 characters" });
-//     }
-
-//     const user = await User.findOne({ email });
-
-//     if (user) return res.status(400).json({ message: "Email already exists" });
-
-//     const salt = await bcrypt.genSalt(10);
-//     const hashedPassword = await bcrypt.hash(password, salt);
-
-//     const newUser = new User({
-//       fullName,
-//       email,
-//       password: hashedPassword,
-//     });
-
-//     if (newUser) {
-//       // generate jwt token here
-//       generateToken(newUser._id, res);
-//       await newUser.save();
-
-//       res.status(201).json({
-//         _id: newUser._id,
-//         fullName: newUser.fullName,
-//         email: newUser.email,
-//         profilePic: newUser.profilePic,
-//       });
-//     } else {
-//       res.status(400).json({ message: "Invalid user data" });
-//     }
-//   } catch (error) {
-//     console.log("Error in signup controller", error.message);
-//     res.status(500).json({ message: "Internal Server Error" });
-//   }
-// };
-
-export const signup = async (req, res) => {
-  const { fullName, email, password } = req.body;
+// Create an anonymous guest account and return a signed guest session token.
+export const createGuest = async (_req, res) => {
   try {
-    if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
-
-    const user = await User.findOne({ email });
-
-    if (user) return res.status(400).json({ message: "Email already exists" });
-
-    // Remove bcrypt hashing - store password as plain text
-    const newUser = new User({
-      fullName,
-      email,
-      password: password, // Store password directly without hashing
+    const guestId = `guest_${randomUUID()}`;
+    const user = await User.create({
+      guestId,
+      isGuest: true,
+      fullName: "Guest User",
+      // Unique placeholder so guests never collide on the legacy unique `email`
+      // index (the empty-string default would reject a second account-less user).
+      email: `${guestId}@guests.noreply`,
+      lastActiveAt: new Date(),
     });
-
-    if (newUser) {
-      generateToken(newUser._id, res);
-      await newUser.save();
-
-      res.status(201).json({
-        _id: newUser._id,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        profilePic: newUser.profilePic,
-      });
-    } else {
-      res.status(400).json({ message: "Invalid user data" });
-    }
+    const token = signGuestToken(guestId);
+    logger.info(`Created guest account ${guestId}`);
+    res.status(201).json({ user, token });
   } catch (error) {
-    console.log("Error in signup controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    logger.error("Error in createGuest controller:", error.message);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// export const login = async (req, res) => {
-//   const { email, password } = req.body;
-//   try {
-//     const user = await User.findOne({ email });
-
-//     if (!user) {
-//       return res.status(400).json({ message: "Invalid credentials" });
-//     }
-
-//     const isPasswordCorrect = await bcrypt.compare(password, user.password);
-//     if (!isPasswordCorrect) {
-//       return res.status(400).json({ message: "Invalid credentials" });
-//     }
-
-//     generateToken(user._id, res);
-
-//     res.status(200).json({
-//       _id: user._id,
-//       fullName: user.fullName,
-//       email: user.email,
-//       profilePic: user.profilePic,
-//     });
-//   } catch (error) {
-//     console.log("Error in login controller", error.message);
-//     res.status(500).json({ message: "Internal Server Error" });
-//   }
-// };
-
-export const login = async (req, res) => {
-  const { email, password } = req.body;
+// Migrate an anonymous guest's data into the signed-in Clerk account, then
+// remove the guest record. protectRoute guarantees req.user is the account; the
+// guest's SIGNED token (ownership proof) is required, not just a guessable id.
+export const migrateGuest = async (req, res) => {
   try {
-    const user = await User.findOne({ email });
+    if (req.user.isGuest) {
+      return res.status(400).json({ message: "Sign in with an account to migrate guest data" });
+    }
+    const { guestToken } = req.body || {};
+    if (!guestToken) return res.status(200).json({ migrated: false });
 
-    if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    let guestId;
+    try {
+      guestId = verifyGuestToken(guestToken).sub;
+    } catch {
+      return res.status(400).json({ message: "Invalid guest token" });
     }
 
-    // Remove bcrypt comparison - compare passwords directly
-    if (password !== user.password) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    const guest = await User.findOne({ guestId, isGuest: true });
+    if (!guest || guest._id.equals(req.user._id)) {
+      return res.status(200).json({ migrated: false });
     }
 
-    generateToken(user._id, res);
+    // Re-point the guest's messages (both directions) to the account.
+    const sent = await Message.updateMany(
+      { senderId: guest._id },
+      { $set: { senderId: req.user._id } }
+    );
+    const received = await Message.updateMany(
+      { receiverId: guest._id },
+      { $set: { receiverId: req.user._id } }
+    );
+    await guest.deleteOne();
 
-    res.status(200).json({
-      _id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      profilePic: user.profilePic,
-    });
+    const moved = (sent.modifiedCount || 0) + (received.modifiedCount || 0);
+    logger.info(`Migrated guest ${guestId} → user ${req.user._id} (${moved} messages)`);
+    res.status(200).json({ migrated: true, messages: moved });
   } catch (error) {
-    console.log("Error in login controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-};
-
-export const logout = (req, res) => {
-  try {
-    res.cookie("jwt", "", { maxAge: 0 });
-    res.status(200).json({ message: "Logged out successfully" });
-  } catch (error) {
-    console.log("Error in logout controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    logger.error("Error in migrateGuest controller:", error.message);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -168,20 +88,46 @@ export const updateProfile = async (req, res) => {
       userId,
       { profilePic: uploadResponse.secure_url },
       { new: true }
-    );
+    ).select("-password");
 
     res.status(200).json(updatedUser);
   } catch (error) {
-    console.log("error in update profile:", error);
+    logger.error("Error in updateProfile controller:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 };
 
 export const checkAuth = (req, res) => {
   try {
+    // req.user is the Mongo user resolved from the session by protectRoute.
     res.status(200).json(req.user);
   } catch (error) {
-    console.log("Error in checkAuth controller", error.message);
+    logger.error("Error in checkAuth controller:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// Persists the client-supplied Clerk display profile onto the Mongo user. The
+// identity (clerkId) comes from the verified token, never the body.
+export const syncProfile = async (req, res) => {
+  try {
+    const cap = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+    const fullName = cap(req.body?.fullName, 80);
+    const email = cap(req.body?.email, 200);
+    const profilePic = cap(req.body?.profilePic, 2000);
+
+    const update = {};
+    if (fullName) update.fullName = fullName;
+    if (email) update.email = email;
+    if (profilePic) update.profilePic = profilePic;
+
+    const user = Object.keys(update).length
+      ? await User.findByIdAndUpdate(req.user._id, update, { new: true }).select("-password")
+      : req.user;
+
+    res.status(200).json(user);
+  } catch (error) {
+    logger.error("Error in syncProfile controller:", error.message);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

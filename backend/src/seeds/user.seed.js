@@ -1,8 +1,9 @@
-import { config } from "dotenv";
+import bcrypt from "bcryptjs";
+// Importing the db layer pulls in the centralized config, which loads + validates
+// the environment (no separate dotenv call needed here).
 import { connectDB } from "../lib/db.js";
 import User from "../models/user.model.js";
-
-config();
+import logger from "../lib/logger.js";
 
 const seedUsers = [
   // Female Users
@@ -104,10 +105,22 @@ const seedDatabase = async () => {
   try {
     await connectDB();
 
-    await User.insertMany(seedUsers);
-    console.log("Database seeded successfully");
+    // insertMany skips the model's pre-save hook, so hash each password here
+    // to keep seeded accounts consistent with real (bcrypt-hashed) sign-ups.
+    const salt = await bcrypt.genSalt(10);
+    const usersToInsert = await Promise.all(
+      seedUsers.map(async (user) => ({
+        ...user,
+        password: await bcrypt.hash(user.password, salt),
+      }))
+    );
+
+    await User.insertMany(usersToInsert);
+    logger.info("Database seeded successfully");
+    process.exit(0);
   } catch (error) {
-    console.error("Error seeding database:", error);
+    logger.error("Error seeding database:", error.message);
+    process.exit(1);
   }
 };
 

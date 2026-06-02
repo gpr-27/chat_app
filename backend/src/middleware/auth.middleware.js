@@ -1,31 +1,27 @@
-import jwt from "jsonwebtoken";
-import User from "../models/user.model.js";
+import logger from "../lib/logger.js";
+import { resolveUserFromToken } from "../lib/resolveUser.js";
 
+// Pull the session token from the Authorization header (the frontend attaches
+// it as `Bearer <token>` — a Clerk token for accounts, or a guest token).
+const extractToken = (req) => {
+  const header = req.headers.authorization || "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : null;
+};
+
+// Gate protected routes on a valid session — Clerk OR guest. The resolved Mongo
+// user is attached as req.user for downstream controllers.
 export const protectRoute = async (req, res, next) => {
+  const token = extractToken(req);
+  if (!token) {
+    logger.warn(`Auth failed: no bearer token — ${req.method} ${req.originalUrl}`);
+    return res.status(401).json({ message: "Unauthorized - No session token" });
+  }
+
   try {
-    const token = req.cookies.jwt;
-
-    if (!token) {
-      return res.status(401).json({ message: "Unauthorized - No Token Provided" });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    if (!decoded) {
-      return res.status(401).json({ message: "Unauthorized - Invalid Token" });
-    }
-
-    const user = await User.findById(decoded.userId).select("-password");
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    req.user = user;
-
+    req.user = await resolveUserFromToken(token);
     next();
   } catch (error) {
-    console.log("Error in protectRoute middleware: ", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    logger.warn(`Auth failed: ${error.message} — ${req.method} ${req.originalUrl}`);
+    return res.status(401).json({ message: "Unauthorized - Invalid session" });
   }
 };
