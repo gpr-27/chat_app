@@ -2,70 +2,113 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
+import config from "../config/index.js";
+import logger from "../lib/logger.js";
+import {
+  getGuestToken,
+  setGuestSession,
+  clearGuestSession,
+} from "../lib/guestSession.js";
 
-const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
-
+// Holds the app-specific Mongo user — for either a Clerk account OR an anonymous
+// guest — plus the realtime socket + presence used by chat and calls.
 export const useAuthStore = create((set, get) => ({
-  authUser: null,
-  isSigningUp: false,
-  isLoggingIn: false,
+  authUser: null, // Mongo user (account or guest)
   isUpdatingProfile: false,
-  isCheckingAuth: true,
+  isSyncingUser: false,
+  syncError: null,
   onlineUsers: [],
   socket: null,
 
-  checkAuth: async () => {
+  // ── Clerk account session ────────────────────────────────────────────────
+  // Fetch/provision the Mongo user for the signed-in Clerk session, then connect.
+  syncUser: async (profile = {}) => {
+    if (get().isSyncingUser) return;
+    set({ isSyncingUser: true, syncError: null });
     try {
-      const res = await axiosInstance.get("/auth/check");
-
-      set({ authUser: res.data });
+      const res = await axiosInstance.post("/auth/sync", profile);
+      set({ authUser: res.data, syncError: null });
       get().connectSocket();
     } catch (error) {
-      console.log("Error in checkAuth:", error);
+      logger.error("Failed to sync user:", error.message);
+      set({
+        authUser: null,
+        syncError:
+          error.response?.data?.message ||
+          "Couldn't reach the server. Make sure the backend is running, then retry.",
+      });
+    } finally {
+      set({ isSyncingUser: false });
+    }
+  },
+
+  // ── Anonymous guest session ──────────────────────────────────────────────
+  // Create a new guest account, persist the session, and connect.
+  continueAsGuest: async () => {
+    if (get().isSyncingUser) return;
+    set({ isSyncingUser: true, syncError: null });
+    try {
+      const res = await axiosInstance.post("/auth/guest");
+      const { user, token } = res.data;
+      setGuestSession(token, user.guestId);
+      set({ authUser: user, syncError: null });
+      get().connectSocket();
+    } catch (error) {
+      logger.error("Failed to start guest session:", error.message);
+      set({
+        syncError:
+          error.response?.data?.message ||
+          "Couldn't start a guest session. Make sure the backend is running, then retry.",
+      });
+    } finally {
+      set({ isSyncingUser: false });
+    }
+  },
+
+  // Restore a guest session from localStorage on startup. Returns true on success.
+  restoreGuest: async () => {
+    if (!getGuestToken()) return false;
+    set({ isSyncingUser: true, syncError: null });
+    try {
+      const res = await axiosInstance.get("/auth/check"); // interceptor sends the guest token
+      set({ authUser: res.data, syncError: null });
+      get().connectSocket();
+      return true;
+    } catch (error) {
+      logger.warn("Guest session expired/invalid; clearing.", error.message);
+      clearGuestSession();
       set({ authUser: null });
+      return false;
     } finally {
-      set({ isCheckingAuth: false });
+      set({ isSyncingUser: false });
     }
   },
 
-  signup: async (data) => {
-    set({ isSigningUp: true });
+  // After a Clerk sign-in: migrate any prior guest's data into the account.
+  migrateGuestIfNeeded: async () => {
+    const guestToken = getGuestToken();
+    if (!guestToken) return;
     try {
-      const res = await axiosInstance.post("/auth/signup", data);
-      set({ authUser: res.data });
-      toast.success("Account created successfully");
-      get().connectSocket();
+      // Send the signed guest token as ownership proof (verified server-side).
+      await axiosInstance.post("/auth/migrate-guest", { guestToken });
+      logger.info("Migrated guest data to account.");
     } catch (error) {
-      toast.error(error.response.data.message);
+      logger.warn("Guest migration failed:", error.message);
     } finally {
-      set({ isSigningUp: false });
+      clearGuestSession();
     }
   },
 
-  login: async (data) => {
-    set({ isLoggingIn: true });
-    try {
-      const res = await axiosInstance.post("/auth/login", data);
-      set({ authUser: res.data });
-      toast.success("Logged in successfully");
-
-      get().connectSocket();
-    } catch (error) {
-      toast.error(error.response.data.message);
-    } finally {
-      set({ isLoggingIn: false });
-    }
+  // ── shared ───────────────────────────────────────────────────────────────
+  clearUser: () => {
+    get().disconnectSocket();
+    set({ authUser: null, onlineUsers: [], syncError: null });
   },
 
-  logout: async () => {
-    try {
-      await axiosInstance.post("/auth/logout");
-      set({ authUser: null });
-      toast.success("Logged out successfully");
-      get().disconnectSocket();
-    } catch (error) {
-      toast.error(error.response.data.message);
-    }
+  // Guest "log out": end the session and forget it.
+  exitGuest: () => {
+    clearGuestSession();
+    get().clearUser();
   },
 
   updateProfile: async (data) => {
@@ -75,31 +118,42 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       toast.success("Profile updated successfully");
     } catch (error) {
-      console.log("error in update profile:", error);
-      toast.error(error.response.data.message);
+      logger.error("Update profile failed:", error.message);
+      toast.error(error.response?.data?.message || "Failed to update profile");
     } finally {
       set({ isUpdatingProfile: false });
     }
   },
 
-  connectSocket: () => {
+  connectSocket: async () => {
     const { authUser } = get();
     if (!authUser || get().socket?.connected) return;
 
-    const socket = io(BASE_URL, {
-      query: {
-        userId: authUser._id,
-      },
+    // Authenticate the socket with whichever session token applies.
+    let token = null;
+    try {
+      token = await window.Clerk?.session?.getToken();
+    } catch {
+      // Clerk not ready / no session — fall through to the guest token.
+    }
+    if (!token) token = getGuestToken();
+    if (!token) return;
+
+    const socket = io(config.socketUrl, {
+      auth: { token },
+      extraHeaders: { ...config.http.tunnelHeaders },
     });
     socket.connect();
 
-    set({ socket: socket });
+    set({ socket });
 
     socket.on("getOnlineUsers", (userIds) => {
       set({ onlineUsers: userIds });
     });
   },
+
   disconnectSocket: () => {
     if (get().socket?.connected) get().socket.disconnect();
+    set({ socket: null });
   },
 }));
