@@ -23,4 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
+# Claude Code agent tooling (local, not part of the app)
+.claude/
+
 .env
