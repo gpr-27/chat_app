@@ -31,6 +31,7 @@ const CallOverlay = () => {
     audioInputId,
     audioOutputId,
     videoInputId,
+    iceDiag,
     endCall,
     toggleMute,
     toggleCamera,
@@ -180,6 +181,15 @@ const CallOverlay = () => {
             : statusLabel}
         </span>
       </div>
+
+      {/* Temporary connection diagnostic (remove after debugging one-way media) */}
+      {iceDiag && (
+        <div className="pointer-events-none absolute inset-x-0 top-11 flex justify-center px-4 sm:top-12">
+          <span className="rounded-md bg-black/45 px-2 py-0.5 font-mono text-[10px] text-white/75 backdrop-blur">
+            {iceDiag}
+          </span>
+        </div>
+      )}
 
       {/* ── Device picker panel ──────────────────────────────────────────── */}
       {showDevices && (

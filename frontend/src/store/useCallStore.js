@@ -39,6 +39,11 @@ export const useCallStore = create((set, get) => ({
   isMuted: false,
   isCameraOff: false,
 
+  // Temporary call diagnostics: which ICE candidate types were gathered and which
+  // pair the connection actually uses (host/srflx/relay). Surfaced in CallOverlay
+  // to diagnose one-way-media / NAT-traversal issues. Safe to remove later.
+  iceDiag: "",
+
   // ── device selection ────────────────────────────────────────────────────
   devices: { mics: [], speakers: [], cameras: [] },
   audioInputId: null, // selected microphone
@@ -61,8 +66,13 @@ export const useCallStore = create((set, get) => ({
     // faster once signaling completes.
     const peer = new RTCPeerConnection({ ...ICE_CONFIG, iceCandidatePoolSize: 10 });
 
+    // Diagnostics: track which candidate types this peer manages to gather. If
+    // "relay" never appears, the TURN server was unreachable from this network.
+    const gathered = new Set();
+
     peer.onicecandidate = (event) => {
       if (event.candidate) {
+        if (event.candidate.type) gathered.add(event.candidate.type);
         socket?.emit("call:ice", { to: remoteUserId, candidate: event.candidate });
       }
     };
@@ -80,14 +90,39 @@ export const useCallStore = create((set, get) => ({
       }
     };
 
-    // If ICE fails outright, ask the browser to restart it (re-gather candidates,
-    // including relayed TURN paths) before giving up.
-    peer.oniceconnectionstatechange = () => {
-      if (peer.iceConnectionState === "failed") {
+    // If ICE fails outright, ask the browser to restart it. When it connects,
+    // read getStats() to report the actual selected candidate-pair type (so we
+    // can see whether media is flowing direct, via STUN reflexive, or via TURN).
+    peer.oniceconnectionstatechange = async () => {
+      const st = peer.iceConnectionState;
+      if (st === "failed") {
         try {
           peer.restartIce?.();
         } catch {
           // best effort
+        }
+        set({ iceDiag: `gathered:[${[...gathered].join(",") || "none"}] ICE FAILED` });
+        return;
+      }
+      if (st === "connected" || st === "completed") {
+        try {
+          const stats = await peer.getStats();
+          const locals = {}, remotes = {};
+          let pair;
+          stats.forEach((r) => {
+            if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected)) {
+              if (!pair || r.bytesReceived > (pair.bytesReceived || 0)) pair = r;
+            } else if (r.type === "local-candidate") locals[r.id] = r;
+            else if (r.type === "remote-candidate") remotes[r.id] = r;
+          });
+          const using = pair
+            ? `${locals[pair.localCandidateId]?.candidateType || "?"}/${remotes[pair.remoteCandidateId]?.candidateType || "?"}`
+            : "?";
+          const diag = `gathered:[${[...gathered].join(",") || "none"}] using:${using}`;
+          set({ iceDiag: diag });
+          console.info("[call] ICE", diag, { pair });
+        } catch {
+          // ignore stats failures
         }
       }
     };
@@ -129,6 +164,7 @@ export const useCallStore = create((set, get) => ({
       audioInputId: null,
       videoInputId: null,
       streamEpoch: 0,
+      iceDiag: "",
       _peer: null,
       _incomingOffer: null,
       _pendingCandidates: [],
