@@ -303,4 +303,16 @@
   .text-muted {
     color: var(--text-muted);
   }
+
+  /* Dynamic viewport height with a 100vh fallback for older browsers. On mobile,
+     plain 100vh ignores the dynamic browser chrome (URL bar), which pushes a
+     bottom bar like the message input off-screen; dvh tracks the visible area. */
+  .h-dvh-screen {
+    height: 100vh;
+    height: 100dvh;
+  }
+  .min-h-dvh-screen {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
 }

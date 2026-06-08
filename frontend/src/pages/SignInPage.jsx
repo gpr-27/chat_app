@@ -14,7 +14,7 @@ const SignInPage = () => {
   const { continueAsGuest, isSyncingUser } = useAuthStore();
 
   return (
-    <div className="app-bg relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+    <div className="app-bg relative flex min-h-dvh-screen items-center justify-center overflow-hidden px-4 py-6 sm:py-10">
       <div className="blobs blobs--mint" aria-hidden="true" />
 
       {/* Soft glow behind the card for depth */}

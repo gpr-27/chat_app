@@ -8,7 +8,7 @@ const HomePage = () => {
   const { selectedUser } = useChatStore();
 
   return (
-    <div className="app-bg relative h-screen overflow-hidden pt-16">
+    <div className="app-bg relative h-dvh-screen overflow-hidden pt-16">
       <div className="blobs" aria-hidden="true" />
 
       <div className="relative mx-auto flex h-full max-w-7xl px-0 sm:px-4 sm:pb-4">

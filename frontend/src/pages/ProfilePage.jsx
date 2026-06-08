@@ -20,7 +20,7 @@ const ProfilePage = () => {
   };
 
   return (
-    <div className="app-bg min-h-screen px-4 pb-16 pt-24">
+    <div className="app-bg min-h-dvh-screen px-4 pb-16 pt-24">
       <div className="blobs" aria-hidden="true" />
 
       <div className="mx-auto max-w-lg animate-fade-in-up">

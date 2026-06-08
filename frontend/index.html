@@ -3,7 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover → enables env(safe-area-inset-*) on notched devices.
+         interactive-widget=resizes-content → the on-screen keyboard resizes the
+         layout so the message input stays visible above it. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#F4F3FA" />
 
     <!-- Apply the saved (or OS-preferred) theme before first paint to avoid a flash.

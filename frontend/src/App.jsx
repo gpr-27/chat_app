@@ -19,7 +19,7 @@ import { useCallStore } from "./store/useCallStore";
 import { useThemeStore } from "./store/useThemeStore";
 
 const Spinner = () => (
-  <div className="app-bg flex h-screen items-center justify-center">
+  <div className="app-bg flex h-dvh-screen items-center justify-center">
     <div className="blobs" aria-hidden="true" />
     <Loader className="size-10 animate-spin text-primary" />
   </div>
@@ -27,7 +27,7 @@ const Spinner = () => (
 
 // Shown when a Clerk account is signed in but the app can't reach its backend.
 const SyncErrorScreen = ({ error, onRetry }) => (
-  <div className="app-bg flex h-screen items-center justify-center px-6">
+  <div className="app-bg flex min-h-dvh-screen items-center justify-center px-6 py-6">
     <div className="blobs" aria-hidden="true" />
     <div className="glass-card relative z-10 w-full max-w-sm rounded-3xl p-8 text-center">
       <h2 className="font-display text-lg font-bold">Can&apos;t load your chats</h2>
@@ -148,7 +148,7 @@ const App = () => {
   }
 
   return (
-    <div className="min-h-screen bg-base-200 font-sans text-base-content">
+    <div className="min-h-dvh-screen bg-base-200 font-sans text-base-content">
       {content}
 
       <Toaster

@@ -75,7 +75,7 @@ const MessageInput = () => {
   };
 
   return (
-    <div className="glass relative border-t border-base-content/10 p-3 sm:p-4">
+    <div className="glass relative border-t border-base-content/10 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4 sm:pt-4 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
       {imagePreview && (
         <div className="mb-3 inline-flex">
           <div className="relative">
