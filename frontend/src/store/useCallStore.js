@@ -105,25 +105,35 @@ export const useCallStore = create((set, get) => ({
         return;
       }
       if (st === "connected" || st === "completed") {
-        try {
-          const stats = await peer.getStats();
-          const locals = {}, remotes = {};
-          let pair;
-          stats.forEach((r) => {
-            if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected)) {
-              if (!pair || r.bytesReceived > (pair.bytesReceived || 0)) pair = r;
-            } else if (r.type === "local-candidate") locals[r.id] = r;
-            else if (r.type === "remote-candidate") remotes[r.id] = r;
-          });
-          const using = pair
-            ? `${locals[pair.localCandidateId]?.candidateType || "?"}/${remotes[pair.remoteCandidateId]?.candidateType || "?"}`
-            : "?";
-          const diag = `gathered:[${[...gathered].join(",") || "none"}] using:${using}`;
-          set({ iceDiag: diag });
-          console.info("[call] ICE", diag, { pair });
-        } catch {
-          // ignore stats failures
-        }
+        const snap = async () => {
+          try {
+            const stats = await peer.getStats();
+            const locals = {}, remotes = {};
+            let pair;
+            stats.forEach((r) => {
+              if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected)) {
+                if (!pair || (r.bytesReceived || 0) > (pair.bytesReceived || 0)) pair = r;
+              } else if (r.type === "local-candidate") locals[r.id] = r;
+              else if (r.type === "remote-candidate") remotes[r.id] = r;
+            });
+            const using = pair
+              ? `${locals[pair.localCandidateId]?.candidateType || "?"}/${remotes[pair.remoteCandidateId]?.candidateType || "?"}`
+              : "?";
+            // Per-track health: ok = live & flowing, MUTE = live but no data
+            // (camera blocked, or media not arriving), end = ended track.
+            const fmt = (tracks) =>
+              (tracks || [])
+                .map((t) => `${t.kind[0]}:${t.readyState !== "live" ? "end" : t.muted ? "MUTE" : "ok"}`)
+                .join(" ") || "none";
+            const diag = `me[${fmt(get().localStream?.getTracks())}] them[${fmt(get().remoteStream?.getTracks())}] ${using}`;
+            set({ iceDiag: diag });
+            console.info("[call]", diag, { pair });
+          } catch {
+            // ignore stats failures
+          }
+        };
+        snap();
+        setTimeout(snap, 2500);
       }
     };
 
@@ -232,9 +242,15 @@ export const useCallStore = create((set, get) => ({
       });
 
       const peer = get()._createPeer(otherUser._id);
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
+      // Apply the caller's offer BEFORE attaching our local tracks.
+      // setRemoteDescription creates the transceivers from the offer's m-lines;
+      // addTrack then attaches our tracks to those same transceivers (sendrecv).
+      // Doing addTrack FIRST can mis-associate transceivers on strict browsers
+      // (Safari/iOS) and silently break the caller→callee media direction — the
+      // receiver ends up with a black/silent remote track even though it connects.
       await peer.setRemoteDescription(new RTCSessionDescription(_incomingOffer));
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       set({
         _peer: peer,
         localStream: stream,
