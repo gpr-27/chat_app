@@ -152,12 +152,11 @@ call "connects" but no audio or video arrives.
    VITE_TURN_CREDENTIAL=<your ExpressTURN password>
    ```
 
-That's it — the app defaults the relay URLs to ExpressTURN over both UDP/TCP
-(`turn:relay1.expressturn.com:3478`) and TLS/443
-(`turns:relay1.expressturn.com:443?transport=tcp`, which punches through the
-strictest mobile/corporate firewalls). To use your own relay instead, also set
-`VITE_TURN_URL` (comma-separated URLs allowed) — it shares the username/credential
-above.
+That's it — the app defaults the relay URLs to ExpressTURN's free-tier host over
+both UDP and TCP (`turn:free.expressturn.com:3478` and
+`turn:free.expressturn.com:3478?transport=tcp`, the TCP variant helping on
+networks that block UDP). To use your own relay instead, also set `VITE_TURN_URL`
+(comma-separated URLs allowed) — it shares the username/credential above.
 
 Other options: **Cloudflare Realtime TURN** or **Twilio** (both need a small
 backend endpoint to mint short-lived credentials), or a self-hosted

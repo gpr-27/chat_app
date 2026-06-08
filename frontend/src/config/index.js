@@ -58,9 +58,11 @@ const DEFAULT_STUN_URLS = [
 // (https://www.expressturn.com — 1 TB/month free, static credentials, no card):
 // set VITE_TURN_USERNAME + VITE_TURN_CREDENTIAL and we default the relay URLs to
 // ExpressTURN below. No relay credentials are ever baked into the committed repo.
+// ExpressTURN's free tier relays on free.expressturn.com:3478 over UDP and TCP;
+// the TCP variant helps on networks that block UDP. (Premium adds TLS/443.)
 const EXPRESSTURN_DEFAULT_URLS = [
-  "turn:relay1.expressturn.com:3478",
-  "turns:relay1.expressturn.com:443?transport=tcp",
+  "turn:free.expressturn.com:3478",
+  "turn:free.expressturn.com:3478?transport=tcp",
 ];
 
 // Build the WebRTC ICE server list:
@@ -68,7 +70,7 @@ const EXPRESSTURN_DEFAULT_URLS = [
 //   • TURN (media relay) is included when credentials are configured — either an
 //     explicit VITE_TURN_URL (one or more comma-separated URLs), or just a
 //     username + credential, in which case the URLs default to ExpressTURN over
-//     both plain UDP/TCP (3478) and TLS/443 (443 traverses the strictest NATs).
+//     UDP and TCP on 3478.
 const buildIceServers = (stunUrls, turnUrls, turnUser, turnCredential) => {
   const stun = toList(stunUrls);
   const servers = (stun.length ? stun : DEFAULT_STUN_URLS).map((urls) => ({ urls }));
