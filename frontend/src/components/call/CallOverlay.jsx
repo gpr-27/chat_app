@@ -54,12 +54,30 @@ const CallOverlay = () => {
     }
   }, [localStream, streamEpoch]);
 
-  // Attach remote video. The element is always mounted (placeholder is layered
-  // on top), so this fires reliably regardless of ontrack/answer ordering.
+  // Attach remote video. Re-attach + play() on every track add/remove: the
+  // remote VIDEO track frequently arrives just AFTER the audio track (a late
+  // addtrack on the same MediaStream), and some browsers (Safari/iOS) won't
+  // start rendering a late-added track on an already-attached element unless
+  // srcObject is reassigned. Relying on the `autoPlay` attribute alone also
+  // isn't enough when srcObject is set programmatically — so call play()
+  // explicitly. This is what fixes the receiver showing a black remote video
+  // even though the track is healthy and flowing.
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
+    const el = remoteVideoRef.current;
+    if (!el || !remoteStream) return;
+
+    const attach = () => {
+      el.srcObject = remoteStream;
+      el.play?.().catch(() => {});
+    };
+    attach();
+
+    remoteStream.addEventListener?.("addtrack", attach);
+    remoteStream.addEventListener?.("removetrack", attach);
+    return () => {
+      remoteStream.removeEventListener?.("addtrack", attach);
+      remoteStream.removeEventListener?.("removetrack", attach);
+    };
   }, [remoteStream]);
 
   // Remote audio plays through a dedicated, always-mounted <audio> sink so it
