@@ -85,9 +85,16 @@ if (!CLIENT_URL) errors.push("Missing CLIENT_URL (or RENDER_EXTERNAL_URL)");
 const MONGODB_URI = required("MONGODB_URI");
 const JWT_SECRET = required("JWT_SECRET");
 
-const CLOUDINARY_CLOUD_NAME = required("CLOUDINARY_CLOUD_NAME");
-const CLOUDINARY_API_KEY = required("CLOUDINARY_API_KEY");
-const CLOUDINARY_API_SECRET = required("CLOUDINARY_API_SECRET");
+// Cloudinary powers image/avatar uploads. It is OPTIONAL: if any of the three
+// values is missing the server still boots, and the app transparently degrades
+// to text-only (image upload is disabled and returns a clear error instead of
+// crashing). Set all three to enable image sharing + avatar uploads.
+const CLOUDINARY_CLOUD_NAME = optionalVar("CLOUDINARY_CLOUD_NAME");
+const CLOUDINARY_API_KEY = optionalVar("CLOUDINARY_API_KEY");
+const CLOUDINARY_API_SECRET = optionalVar("CLOUDINARY_API_SECRET");
+const CLOUDINARY_ENABLED = Boolean(
+  CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET
+);
 
 // Clerk (authentication). Only the PUBLISHABLE key is required: sessions are
 // verified networklessly against Clerk's public JWKS, located via the frontend-
@@ -151,6 +158,7 @@ const config = Object.freeze({
   jwtSecret: JWT_SECRET,
 
   cloudinary: Object.freeze({
+    enabled: CLOUDINARY_ENABLED,
     cloudName: CLOUDINARY_CLOUD_NAME,
     apiKey: CLOUDINARY_API_KEY,
     apiSecret: CLOUDINARY_API_SECRET,

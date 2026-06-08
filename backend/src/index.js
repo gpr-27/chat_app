@@ -86,7 +86,11 @@ app.use("/api/messages", messageRoutes);
 if (config.isProduction) {
   app.use(express.static(config.paths.clientDist));
 
-  app.get("*", (req, res) => {
+  // SPA fallback: serve index.html for client-side routes, but let unknown
+  // /api/* paths fall through to the JSON 404 handler below (otherwise a typo'd
+  // or removed API route would silently return the HTML shell with a 200).
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
     res.sendFile(path.join(config.paths.clientDist, "index.html"));
   });
 }

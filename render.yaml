@@ -3,12 +3,17 @@
 #
 #  The Express/Socket.IO backend serves the built React SPA from frontend/dist
 #  (see backend/src/index.js, NODE_ENV=production branch), so the API, the
-#  realtime/WebRTC-signaling layer, and the UI all live on a single origin.
+#  realtime/WebRTC-signaling layer, and the UI all live on a single HTTPS origin
+#  (HTTPS is required for camera/microphone access in voice/video calls).
 #
 #  First deploy:
 #    1. Push this repo to GitHub.
 #    2. Render Dashboard → New → Blueprint → pick this repo.
-#    3. Fill in the env vars marked `sync: false` (secrets), then Apply.
+#    3. Fill in the env vars marked `sync: false`, then Apply.
+#         • REQUIRED: MONGODB_URI, CLERK_PUBLISHABLE_KEY, VITE_CLERK_PUBLISHABLE_KEY
+#         • OPTIONAL: CLERK_SECRET_KEY, CLOUDINARY_*, VITE_TURN_* (leave blank to skip)
+#       (You can also bulk-paste them from render-upload.env via the dashboard's
+#        "Add from .env" button.)
 #
 #  Render injects PORT and RENDER_EXTERNAL_URL automatically — the app already
 #  reads both, so CORS/Socket.IO origins are configured with no extra steps.
@@ -17,7 +22,7 @@ services:
   - type: web
     name: chat-app
     runtime: node
-    plan: free          # bump to "starter" to avoid free-tier cold-starts
+    plan: free          # bump to "starter" to avoid free-tier cold-starts/sleep
     region: oregon      # pick the region closest to your users
     branch: main
     autoDeploy: true
@@ -28,6 +33,7 @@ services:
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
+      # ── Core (non-secret, set automatically) ──────────────────────────────
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
@@ -45,24 +51,39 @@ services:
       - key: VITE_SOCKET_URL
         value: /
 
-      # ── Secrets / deployment-specific — set these in the Render dashboard ──
+      # ── Generated secret ──────────────────────────────────────────────────
       - key: JWT_SECRET
         generateValue: true            # Render generates a strong random value
+
+      # ── REQUIRED secrets — set in the dashboard (or via render-upload.env) ──
       - key: MONGODB_URI
-        sync: false                    # e.g. a MongoDB Atlas connection string
+        sync: false                    # MongoDB Atlas connection string (free M0)
       - key: CLERK_PUBLISHABLE_KEY
+        sync: false                    # pk_test_… or pk_live_… (Clerk dashboard)
+      - key: VITE_CLERK_PUBLISHABLE_KEY # the SAME pk_… value (baked into the SPA)
         sync: false
+
+      # ── OPTIONAL — leave blank to skip the feature ────────────────────────
+      # Clerk Backend API calls (NOT needed for session verification):
       - key: CLERK_SECRET_KEY
         sync: false
-      - key: VITE_CLERK_PUBLISHABLE_KEY # same pk_... value (baked into the SPA)
-        sync: false
+      # Image/avatar uploads. If unset, the app boots fine and runs text-only
+      # (image upload is disabled); set all three to enable image sharing:
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-
-      # ── Optional — add in the dashboard to override the free public TURN ──
-      # relay with your own (recommended for production call reliability):
-      #   VITE_TURN_URL, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL, VITE_STUN_URLS
+      # Voice/video TURN relay — needed for calls ACROSS different networks
+      # (mobile data, strict NATs). Free 1 TB/mo at https://www.expressturn.com:
+      # paste its Username/Password here (the relay URLs default to ExpressTURN).
+      # Leave blank for same-network-only calls. See DEPLOYMENT.md → Voice/video.
+      - key: VITE_TURN_USERNAME
+        sync: false
+      - key: VITE_TURN_CREDENTIAL
+        sync: false
+      # Optional: override the default ExpressTURN relay URLs (comma-separated)
+      # with your own TURN server(s):
+      - key: VITE_TURN_URL
+        sync: false

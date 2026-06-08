@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 
-import cloudinary from "../lib/cloudinary.js";
+import cloudinary, { cloudinaryEnabled } from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import logger from "../lib/logger.js";
 
@@ -117,9 +117,25 @@ export const sendMessage = async (req, res) => {
 
     let imageUrl;
     if (image) {
-      // Upload base64 image to cloudinary
-      const uploadResponse = await cloudinary.uploader.upload(image);
-      imageUrl = uploadResponse.secure_url;
+      // Image upload is best-effort and isolated: if Cloudinary is disabled or
+      // the upload fails, a message that ALSO has text still sends (text-only),
+      // and an image-only message returns a clear error instead of a generic 500.
+      if (!cloudinaryEnabled) {
+        if (!text?.trim()) {
+          return res.status(503).json({ error: "Image uploads are not configured on this server" });
+        }
+        logger.warn("Image dropped — Cloudinary not configured; sending text only");
+      } else {
+        try {
+          const uploadResponse = await cloudinary.uploader.upload(image);
+          imageUrl = uploadResponse.secure_url;
+        } catch (uploadError) {
+          logger.error("Cloudinary upload failed:", uploadError.message);
+          if (!text?.trim()) {
+            return res.status(502).json({ error: "Image upload failed — please try again" });
+          }
+        }
+      }
     }
 
     const newMessage = new Message({

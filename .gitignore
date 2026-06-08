@@ -30,3 +30,5 @@ dist-ssr
 .env
 .env.*
 !.env.example
+# Local Render deploy secrets (generated for the dashboard "Add from .env" flow).
+render-upload.env

@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
-import cloudinary from "../lib/cloudinary.js";
+import cloudinary, { cloudinaryEnabled } from "../lib/cloudinary.js";
 import logger from "../lib/logger.js";
 import { signGuestToken, verifyGuestToken } from "../lib/guestToken.js";
 
@@ -83,7 +83,17 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ message: "Profile pic is required" });
     }
 
-    const uploadResponse = await cloudinary.uploader.upload(profilePic);
+    if (!cloudinaryEnabled) {
+      return res.status(503).json({ message: "Avatar uploads are not configured on this server" });
+    }
+
+    let uploadResponse;
+    try {
+      uploadResponse = await cloudinary.uploader.upload(profilePic);
+    } catch (uploadError) {
+      logger.error("Cloudinary avatar upload failed:", uploadError.message);
+      return res.status(502).json({ message: "Avatar upload failed — please try again" });
+    }
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { profilePic: uploadResponse.secure_url },

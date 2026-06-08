@@ -20,6 +20,11 @@ const CALL_EVENTS = [
 
 const getSocket = () => useAuthStore.getState().socket;
 
+// getUserMedia (camera/mic) is only available in a secure context: HTTPS or
+// http://localhost. Over plain HTTP on a LAN IP it's undefined and throws a
+// confusing generic error, so guard with an actionable message up front.
+const hasMediaSupport = () => Boolean(navigator.mediaDevices?.getUserMedia);
+
 const resolveUser = (userId) => {
   const user = useChatStore.getState().users.find((u) => u._id === userId);
   return user || { _id: userId, fullName: "Unknown", profilePic: "" };
@@ -110,6 +115,7 @@ export const useCallStore = create((set, get) => ({
       _peer.onicecandidate = null;
       _peer.ontrack = null;
       _peer.onconnectionstatechange = null;
+      _peer.oniceconnectionstatechange = null;
       _peer.close();
     }
     set({
@@ -135,6 +141,9 @@ export const useCallStore = create((set, get) => ({
     const socket = getSocket();
     if (!socket) return toast.error("Not connected");
     if (get().callStatus !== "idle") return;
+    if (!hasMediaSupport()) {
+      return toast.error("Calls need a secure connection (HTTPS or localhost).");
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -173,6 +182,12 @@ export const useCallStore = create((set, get) => ({
     const socket = getSocket();
     const { otherUser, _incomingOffer, callType } = get();
     if (!socket || !otherUser || !_incomingOffer) return;
+    if (!hasMediaSupport()) {
+      toast.error("Calls need a secure connection (HTTPS or localhost).");
+      socket.emit("call:reject", { to: otherUser._id });
+      get()._cleanup();
+      return;
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -318,9 +333,10 @@ export const useCallStore = create((set, get) => ({
     CALL_EVENTS.forEach((event) => socket.off(event));
 
     socket.on("call:incoming", ({ from, offer, callType }) => {
-      // Already busy → auto-decline so the caller isn't left hanging.
+      // Already busy → tell the caller we're on another call (accurate toast)
+      // instead of a generic "declined".
       if (get().callStatus !== "idle") {
-        socket.emit("call:reject", { to: from });
+        socket.emit("call:busy", { to: from });
         return;
       }
       set({

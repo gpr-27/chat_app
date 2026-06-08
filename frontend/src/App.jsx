@@ -52,6 +52,7 @@ const App = () => {
     syncError,
     restoreGuest,
     migrateGuestIfNeeded,
+    socket,
   } = useAuthStore();
   const { subscribeToMessages, unsubscribeFromMessages } = useChatStore();
   const { subscribeToCallEvents, unsubscribeFromCallEvents } = useCallStore();
@@ -96,9 +97,14 @@ const App = () => {
   }, [isLoaded, isSignedIn, user?.id]);
 
   // One global subscription drives live messages, typing, read receipts, deletes,
-  // and call signaling — for accounts and guests alike.
+  // and call signaling — for accounts and guests alike. Keyed on the SOCKET (not
+  // authUser): connectSocket() sets the socket asynchronously after authUser, so
+  // binding on authUser could run before the socket exists and silently attach
+  // nothing. Keying on socket re-binds the moment it connects and again for any
+  // fresh socket after a reconnect — otherwise incoming calls never ring and live
+  // messages never arrive.
   useEffect(() => {
-    if (!authUser) return;
+    if (!socket) return;
     subscribeToMessages();
     subscribeToCallEvents();
     return () => {
@@ -106,7 +112,7 @@ const App = () => {
       unsubscribeFromCallEvents();
     };
   }, [
-    authUser,
+    socket,
     subscribeToMessages,
     unsubscribeFromMessages,
     subscribeToCallEvents,

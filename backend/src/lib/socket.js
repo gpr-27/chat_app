@@ -55,10 +55,23 @@ io.on("connection", (socket) => {
 
   // ── WebRTC call signaling ──────────────────────────────────────────────
   // The server only relays SDP/ICE between the two peers; media is P2P.
+  // Clear a call pairing only when it actually matches, so an unrelated
+  // in-progress call is never torn down by a stray reject/end.
+  const clearCallPair = (a, b) => {
+    if (activeCallPeer[a] === b) delete activeCallPeer[a];
+    if (activeCallPeer[b] === a) delete activeCallPeer[b];
+  };
+
   socket.on("call:offer", ({ to, offer, callType }) => {
     const receiverSocketId = userSocketMap[to];
     if (!receiverSocketId) {
       socket.emit("call:unavailable", { to });
+      return;
+    }
+    // If the target is already on another call, tell the caller they're busy
+    // rather than overwriting the existing pairing.
+    if (activeCallPeer[to] && activeCallPeer[to] !== userId) {
+      socket.emit("call:busy", { to });
       return;
     }
     activeCallPeer[userId] = to;
@@ -77,15 +90,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("call:reject", ({ to }) => {
-    delete activeCallPeer[userId];
-    delete activeCallPeer[to];
+    clearCallPair(userId, to);
     const receiverSocketId = userSocketMap[to];
     if (receiverSocketId) io.to(receiverSocketId).emit("call:rejected", { from: userId });
   });
 
   socket.on("call:end", ({ to }) => {
-    delete activeCallPeer[userId];
-    delete activeCallPeer[to];
+    clearCallPair(userId, to);
     const receiverSocketId = userSocketMap[to];
     if (receiverSocketId) io.to(receiverSocketId).emit("call:ended", { from: userId });
   });

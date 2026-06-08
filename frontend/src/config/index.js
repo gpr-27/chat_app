@@ -35,41 +35,50 @@ const toList = (value) => [
   ),
 ];
 
-// Free public STUN servers (Google) — used when VITE_STUN_URLS is not set.
-// STUN only helps two peers discover their public address; it does NOT relay
-// media.
+// Free public STUN servers (Google + Cloudflare) — used when VITE_STUN_URLS is
+// not set. STUN only helps two peers discover their public address; it does NOT
+// relay media.
 const DEFAULT_STUN_URLS = [
   "stun:stun.l.google.com:19302",
   "stun:stun1.l.google.com:19302",
+  "stun:stun2.l.google.com:19302",
+  "stun:stun.cloudflare.com:3478",
 ];
 
-// Free public TURN relay (Metered "Open Relay"). A TURN server relays the actual
-// audio/video when a direct peer-to-peer path can't be established — which is the
-// COMMON case between two phones on mobile data, or behind strict/symmetric NATs
-// and corporate firewalls. Without TURN, a call can appear "connected" while no
-// media ever flows (the classic "I called but the other phone has no sound").
+// A TURN server relays the actual audio/video when a direct peer-to-peer path
+// can't be established — the COMMON case between two phones on mobile data, or
+// behind strict/symmetric NATs and corporate firewalls. Without TURN a call can
+// appear "connected" while no media ever flows (the classic "I called but the
+// other phone has no sound").
 //
-// These no-signup credentials are a best-effort fallback so calls work out of
-// the box at zero cost. For production-grade reliability, set your own TURN
-// server via VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL (e.g. a
-// free Metered API key, Twilio, or a self-hosted coturn) — it takes precedence.
-const DEFAULT_TURN_SERVERS = [
-  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+// NOTE: there is no longer a reliable no-signup public TURN relay (the old
+// Metered "openrelayproject" credentials were retired and no longer authenticate
+// — which silently breaks cross-network calls). So TURN is enabled by providing
+// your OWN credentials via env. The simplest free option is ExpressTURN
+// (https://www.expressturn.com — 1 TB/month free, static credentials, no card):
+// set VITE_TURN_USERNAME + VITE_TURN_CREDENTIAL and we default the relay URLs to
+// ExpressTURN below. No relay credentials are ever baked into the committed repo.
+const EXPRESSTURN_DEFAULT_URLS = [
+  "turn:relay1.expressturn.com:3478",
+  "turns:relay1.expressturn.com:443?transport=tcp",
 ];
 
-// Build the WebRTC ICE server list. STUN (with a sensible default) is always
-// included; a TURN relay is always included too — either the one configured via
-// env, or the free public fallback — so NAT traversal works without per-deploy
-// setup.
-const buildIceServers = (stunUrls, turnUrl, turnUser, turnCredential) => {
+// Build the WebRTC ICE server list:
+//   • STUN is always included (free; lets direct peer-to-peer paths form).
+//   • TURN (media relay) is included when credentials are configured — either an
+//     explicit VITE_TURN_URL (one or more comma-separated URLs), or just a
+//     username + credential, in which case the URLs default to ExpressTURN over
+//     both plain UDP/TCP (3478) and TLS/443 (443 traverses the strictest NATs).
+const buildIceServers = (stunUrls, turnUrls, turnUser, turnCredential) => {
   const stun = toList(stunUrls);
   const servers = (stun.length ? stun : DEFAULT_STUN_URLS).map((urls) => ({ urls }));
-  if (turnUrl) {
-    servers.push({ urls: turnUrl, username: turnUser, credential: turnCredential });
-  } else {
-    servers.push(...DEFAULT_TURN_SERVERS);
+
+  if (turnUser && turnCredential) {
+    const provided = toList(turnUrls);
+    const relayUrls = provided.length ? provided : EXPRESSTURN_DEFAULT_URLS;
+    for (const urls of relayUrls) {
+      servers.push({ urls, username: turnUser, credential: turnCredential });
+    }
   }
   return servers;
 };
@@ -82,8 +91,10 @@ const SOCKET_URL = required("VITE_SOCKET_URL");
 
 const CLERK_PUBLISHABLE_KEY = required("VITE_CLERK_PUBLISHABLE_KEY");
 
-// STUN/TURN are optional: buildIceServers() falls back to free public servers
-// when these are unset, so calls work without any per-deployment configuration.
+// STUN is optional (a free default list is used when unset). TURN is enabled by
+// supplying credentials (VITE_TURN_USERNAME + VITE_TURN_CREDENTIAL, and optionally
+// one or more comma-separated VITE_TURN_URL). Without TURN, same-network calls
+// work but cross-network calls may fail — see DEPLOYMENT.md → Voice/video calls.
 const STUN_URLS = optional("VITE_STUN_URLS");
 const TURN_URL = optional("VITE_TURN_URL");
 const TURN_USERNAME = optional("VITE_TURN_USERNAME");
@@ -113,6 +124,9 @@ const config = Object.freeze({
   }),
 
   webrtc: Object.freeze({
+    // True when a TURN relay is configured (so the UI can warn that cross-network
+    // calls may not connect when it's false).
+    hasTurn: Boolean(TURN_USERNAME && TURN_CREDENTIAL),
     iceServers: Object.freeze(
       buildIceServers(STUN_URLS, TURN_URL, TURN_USERNAME, TURN_CREDENTIAL)
     ),

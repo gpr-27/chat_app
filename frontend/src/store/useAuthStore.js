@@ -90,12 +90,15 @@ export const useAuthStore = create((set, get) => ({
     if (!guestToken) return;
     try {
       // Send the signed guest token as ownership proof (verified server-side).
-      await axiosInstance.post("/auth/migrate-guest", { guestToken });
-      logger.info("Migrated guest data to account.");
-    } catch (error) {
-      logger.warn("Guest migration failed:", error.message);
-    } finally {
+      const res = await axiosInstance.post("/auth/migrate-guest", { guestToken });
+      // Only forget the guest session on a CONFIRMED server response (migrated,
+      // or nothing-to-migrate). On a transient failure (network, or the Bearer
+      // briefly carried the guest token → 400) we KEEP the token so the guest's
+      // chats aren't orphaned; a later sign-in retries the migration.
       clearGuestSession();
+      if (res.data?.migrated) logger.info("Migrated guest data to account.");
+    } catch (error) {
+      logger.warn("Guest migration failed; keeping guest session to retry:", error.message);
     }
   },
 
@@ -153,7 +156,13 @@ export const useAuthStore = create((set, get) => ({
   },
 
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
+    // Disconnect whether or not the handshake has completed — a socket dropped
+    // mid-connect would otherwise keep reconnecting in the background, orphaned.
+    const s = get().socket;
+    if (s) {
+      s.removeAllListeners?.();
+      s.disconnect();
+    }
     set({ socket: null });
   },
 }));
